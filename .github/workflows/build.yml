@@ -39,7 +39,6 @@ jobs:
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
           sdkmanager "platform-tools" "build-tools;36.0.0" "platforms;android-36" || true
-          sdkmanager "platforms;android-36.1" || true
 
       - name: Set up Gradle 9.1.0
         uses: gradle/actions/setup-gradle@v4
@@ -59,9 +58,30 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+      - name: Patch project for CI
+        run: |
+          sed -i 's/release(36) { minorApiLevel = 1 }/release(36)/' "$PROJECT_DIR/app/build.gradle.kts" || true
+          sed -i 's/^org.gradle.configuration-cache=true/org.gradle.configuration-cache=false/' "$PROJECT_DIR/gradle.properties" || true
+          echo "--- app/build.gradle.kts (android block) ---"
+          sed -n '1,30p' "$PROJECT_DIR/app/build.gradle.kts"
+
       - name: Build debug APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set +e
+          gradle assembleDebug --no-daemon --no-configuration-cache 2>&1 | tee build.log
+          STATUS=${PIPESTATUS[0]}
+          {
+            echo "## Build error"
+            echo '```'
+            grep -A 25 "What went wrong" build.log | head -n 35
+            echo '```'
+            echo "## Last 60 lines of the log"
+            echo '```'
+            tail -n 60 build.log
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+          exit $STATUS
 
       - name: Collect APK
         run: |
