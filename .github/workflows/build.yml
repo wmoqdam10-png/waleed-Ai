@@ -62,6 +62,48 @@ jobs:
         run: |
           sed -i 's/release(36) { minorApiLevel = 1 }/release(36)/' "$PROJECT_DIR/app/build.gradle.kts" || true
           sed -i 's/^org.gradle.configuration-cache=true/org.gradle.configuration-cache=false/' "$PROJECT_DIR/gradle.properties" || true
+          printf '\norg.gradle.jvmargs=-Xmx5g -Dfile.encoding=UTF-8 -Djava.awt.headless=true\n' >> "$PROJECT_DIR/gradle.properties"
+          tail -n 5 "$PROJECT_DIR/gradle.properties"
+
+      - name: Build debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set +e
+          gradle assembleDebug --no-daemon --no-configuration-cache 2>&1 | tee build.log
+          STATUS=${PIPESTATUS[0]}
+          {
+            echo "## Build error"
+            echo '```'
+            grep -A 25 "What went wrong" build.log | head -n 35
+            echo '```'
+            echo "## Last 60 lines of the log"
+            echo '```'
+            tail -n 60 build.log
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+          exit $STATUS
+
+      - name: Collect APK
+        run: |
+          APK=$(find . -path "*outputs/apk/debug/*" -name "*.apk" | head -n 1)
+          echo "Found APK: $APK"
+          mkdir -p out
+          cp "$APK" out/waleed-ai.apk
+          ls -lh out/
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: waleed-ai-apk
+          path: out/waleed-ai.apk
+
+      - name: Publish APK as a Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Waleed AI APK - Build ${{ github.run_number }}
+          files: out/waleed-ai.apk          sed -i 's/release(36) { minorApiLevel = 1 }/release(36)/' "$PROJECT_DIR/app/build.gradle.kts" || true
+          sed -i 's/^org.gradle.configuration-cache=true/org.gradle.configuration-cache=false/' "$PROJECT_DIR/gradle.properties" || true
 
       - name: Build debug APK
         working-directory: ${{ env.PROJECT_DIR }}
